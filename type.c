@@ -95,7 +95,7 @@ Type *copy_type(Type *ty) {
 }
 
 Type *pointer_to(Type *base) {
-  Type *ty = new_type(TY_PTR, 8, 8);
+  Type *ty = new_type(TY_PTR, 2, 2);
   ty->base = base;
   ty->is_unsigned = true;
   return ty;
@@ -147,11 +147,12 @@ static Type *get_common_type(Type *ty1, Type *ty2) {
   if (ty1->kind == TY_FLOAT || ty2->kind == TY_FLOAT)
     return ty_float;
 
+  /*
   if (ty1->size < 4)
     ty1 = ty_int;
   if (ty2->size < 4)
     ty2 = ty_int;
-
+    */
   if (ty1->size != ty2->size)
     return (ty1->size < ty2->size) ? ty2 : ty1;
 

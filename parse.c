@@ -87,7 +87,7 @@ static Obj *locals;
 // Likewise, global variables are accumulated to this list.
 static Obj *globals;
 
-static Scope *scope = &(Scope){};
+static Scope *scope = &(Scope){0};
 
 // Points to the function object the parser is currently parsing.
 static Obj *current_fn;
@@ -326,7 +326,7 @@ static Obj *new_gvar(char *name, Type *ty) {
 
 static char *new_unique_name(void) {
   static int id = 0;
-  return format(".L..%d", id++);
+  return format(".%d", id++);
 }
 
 static Obj *new_anon_gvar(Type *ty) {
@@ -397,7 +397,7 @@ static Type *declspec(Token **rest, Token *tok, VarAttr *attr) {
     UNSIGNED = 1 << 18,
   };
 
-  Type *ty = ty_int;
+  Type *ty = ty_short;
   int counter = 0;
   bool is_atomic = false;
 
@@ -587,7 +587,7 @@ static Type *func_params(Token **rest, Token *tok, Type *ty) {
     return func_type(ty);
   }
 
-  Type head = {};
+  Type head = {0};
   Type *cur = &head;
   bool is_variadic = false;
 
@@ -683,7 +683,7 @@ static Type *declarator(Token **rest, Token *tok, Type *ty) {
 
   if (equal(tok, "(")) {
     Token *start = tok;
-    Type dummy = {};
+    Type dummy = {0};
     declarator(&tok, start->next, &dummy);
     tok = skip(tok, ")");
     ty = type_suffix(rest, tok, ty);
@@ -710,7 +710,7 @@ static Type *abstract_declarator(Token **rest, Token *tok, Type *ty) {
 
   if (equal(tok, "(")) {
     Token *start = tok;
-    Type dummy = {};
+    Type dummy = {0};
     abstract_declarator(&tok, start->next, &dummy);
     tok = skip(tok, ")");
     ty = type_suffix(rest, tok, ty);
@@ -842,7 +842,7 @@ static Node *new_alloca(Node *sz) {
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 static Node *declaration(Token **rest, Token *tok, Type *basety, VarAttr *attr) {
-  Node head = {};
+  Node head = {0};
   Node *cur = &head;
   int i = 0;
 
@@ -1280,7 +1280,7 @@ static void initializer2(Token **rest, Token *tok, Initializer *init) {
 static Type *copy_struct_type(Type *ty) {
   ty = copy_type(ty);
 
-  Member head = {};
+  Member head = {0};
   Member *cur = &head;
   for (Member *mem = ty->members; mem; mem = mem->next) {
     Member *m = calloc(1, sizeof(Member));
@@ -1486,7 +1486,7 @@ write_gvar_data(Relocation *cur, Initializer *init, Type *ty, char *buf, int off
 static void gvar_initializer(Token **rest, Token *tok, Obj *var) {
   Initializer *init = initializer(rest, tok, var->ty, &var->ty);
 
-  Relocation head = {};
+  Relocation head = {0};
   char *buf = calloc(1, var->ty->size);
   write_gvar_data(&head, init, var->ty, buf, 0);
   var->init_data = buf;
@@ -1555,7 +1555,7 @@ static Node *stmt(Token **rest, Token *tok) {
 
     add_type(exp);
     Type *ty = current_fn->ty->return_ty;
-    if (ty->kind != TY_STRUCT && ty->kind != TY_UNION)
+    if (ty->kind != TY_STRUCT && ty->kind != TY_UNION && ty->kind != exp->ty->kind)
       exp = new_cast(exp, current_fn->ty->return_ty);
 
     node->lhs = exp;
@@ -1762,14 +1762,14 @@ static Node *stmt(Token **rest, Token *tok) {
 // compound-stmt = (typedef | declaration | stmt)* "}"
 static Node *compound_stmt(Token **rest, Token *tok) {
   Node *node = new_node(ND_BLOCK, tok);
-  Node head = {};
+  Node head = {0};
   Node *cur = &head;
 
   enter_scope();
 
   while (!equal(tok, "}")) {
     if (is_typename(tok) && !equal(tok->next, ":")) {
-      VarAttr attr = {};
+      VarAttr attr = {0};
       Type *basety = declspec(&tok, tok, &attr);
 
       if (attr.is_typedef) {
@@ -2069,7 +2069,7 @@ static Node *to_assign(Node *binary) {
   //   new;
   // })
   if (binary->lhs->ty->is_atomic) {
-    Node head = {};
+    Node head = {0};
     Node *cur = &head;
 
     Obj *addr = new_lvar("", pointer_to(binary->lhs->ty));
@@ -2542,12 +2542,12 @@ static Node *unary(Token **rest, Token *tok) {
 
 // struct-members = (declspec declarator (","  declarator)* ";")*
 static void struct_members(Token **rest, Token *tok, Type *ty) {
-  Member head = {};
+  Member head = {0};
   Member *cur = &head;
   int idx = 0;
 
   while (!equal(tok, "}")) {
-    VarAttr attr = {};
+    VarAttr attr = {0};
     Type *basety = declspec(&tok, tok, &attr);
     bool first = true;
 
@@ -2882,7 +2882,7 @@ static Node *funcall(Token **rest, Token *tok, Node *fn) {
   Type *ty = (fn->ty->kind == TY_FUNC) ? fn->ty : fn->ty->base;
   Type *param_ty = ty->params;
 
-  Node head = {};
+  Node head = {0};
   Node *cur = &head;
 
   while (!equal(tok, ")")) {
@@ -3244,6 +3244,7 @@ static Token *function(Token *tok, Type *basety, VarAttr *attr) {
 
   tok = skip(tok, "{");
 
+  /*
   // [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is
   // automatically defined as a local variable containing the
   // current function name.
@@ -3253,7 +3254,7 @@ static Token *function(Token *tok, Type *basety, VarAttr *attr) {
   // [GNU] __FUNCTION__ is yet another name of __func__.
   push_scope("__FUNCTION__")->var =
     new_string_literal(fn->name, array_of(ty_char, strlen(fn->name) + 1));
-
+    */
   fn->body = compound_stmt(&tok, tok);
   fn->locals = locals;
   leave_scope();
@@ -3294,7 +3295,7 @@ static bool is_function(Token *tok) {
   if (equal(tok, ";"))
     return false;
 
-  Type dummy = {};
+  Type dummy = {0};
   Type *ty = declarator(&tok, tok, &dummy);
   return ty->kind == TY_FUNC;
 }
@@ -3339,7 +3340,7 @@ Obj *parse(Token *tok) {
   globals = NULL;
 
   while (tok->kind != TK_EOF) {
-    VarAttr attr = {};
+    VarAttr attr = {0};
     Type *basety = declspec(&tok, tok, &attr);
 
     // Typedef
