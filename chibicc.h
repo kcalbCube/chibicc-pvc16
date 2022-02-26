@@ -159,6 +159,9 @@ struct Obj {
   bool is_live;
   bool is_root;
   StringArray refs;
+
+  // Asm
+  char* asm;
 };
 
 // Global variable can be initialized either by a constant expression
@@ -315,6 +318,7 @@ typedef enum {
   TY_VLA, // variable-length array
   TY_STRUCT,
   TY_UNION,
+  TY_ASM,
 } TypeKind;
 
 struct Type {
@@ -391,6 +395,8 @@ extern Type *ty_float;
 extern Type *ty_double;
 extern Type *ty_ldouble;
 
+extern Type* ty_asm;
+
 bool is_integer(Type *ty);
 bool is_flonum(Type *ty);
 bool is_numeric(Type *ty);
@@ -455,5 +461,4 @@ extern StringArray include_paths;
 extern bool opt_fpic;
 extern bool opt_fcommon;
 extern char *base_file;
-
 char* strndup(char* str, int chars);

@@ -360,6 +360,7 @@ static bool convert_pp_int(Token *tok) {
   bool l = false;
   bool u = false;
   bool s = false;
+  bool b = false;
 
   if (startswith(p, "LLU") || startswith(p, "LLu") ||
 	  startswith(p, "llU") || startswith(p, "llu") ||
@@ -378,6 +379,11 @@ static bool convert_pp_int(Token *tok) {
 	  p += 2;
 	  s = u = true;
   }
+  else if (!_strnicmp(p, "bu", 2) || !_strnicmp(p, "ub", 2))
+  {
+	  p += 2;
+	  b = u = true;
+  }
   else if (startswith(p, "LL") || startswith(p, "ll")) 
   {
 	p += 2;
@@ -394,6 +400,11 @@ static bool convert_pp_int(Token *tok) {
 	  ++p;
 	  s = true;
   }
+  else if (*p == 'B' || *p == 'b')
+  {
+	  ++p;
+	  b = true;
+  }
 
   if (p != tok->loc + tok->len)
 	return false;
@@ -408,8 +419,12 @@ static bool convert_pp_int(Token *tok) {
 		  ty = ty_long;
 	  else if (s && u)
 		  ty = ty_ushort;
+	  else if (b && u)
+		  ty = ty_uchar;
 	  else if (s)
 		  ty = ty_short;
+	  else if (b)
+		  ty = ty_char;
 	  else if (u)
 		  ty = (val >> 32) ? ty_ulong : ty_uint;
 	else
@@ -423,8 +438,12 @@ static bool convert_pp_int(Token *tok) {
 	  ty = (val >> 63) ? ty_ulong : ty_long;
 	else if (s && u)
 		ty = ty_ushort;
+	else if (b && u)
+		ty = ty_uchar;
 	else if (s)
 		ty = ty_short;
+	else if (b)
+		ty = ty_char;
 	else if (u)
 	  ty = (val >> 32) ? ty_ulong : ty_uint;
 	else if (val >> 63)
