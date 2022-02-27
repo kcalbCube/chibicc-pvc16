@@ -147,14 +147,14 @@ static void gen_addr(Node *node) {
 	// Function
 	if (node->ty->kind == TY_FUNC) {
 		if (node->var->is_definition)
-			;// println("\tlea %s(%%rip), %%rax", node->var->name);
+			println("\tmov %%a @%s", node->var->name);
 	  else
 		println("\tmov %s@GOTPCREL(%%rip), %%rax", node->var->name);
 	  return;
 	}
 
 	// Global variable
-	println("\tlea %s(%%rip), %%rax", node->var->name);
+	println("\tmov %%a @%s", node->var->name);
 	return;
   case ND_DEREF:
 	gen_expr(node->lhs);
@@ -380,15 +380,15 @@ static char f80f64[] = "fstpl -8(%rsp); movsd -8(%rsp), %xmm0";
 
 static char *cast_table[][11] = {
   // i8   i16     i32     i64     u8     u16     u32     u64     f32     f64     f80
-  {NULL,  NULL,   NULL,   i32i64, i32u8, i32u16, NULL,   i32i64, i32f32, i32f64, i32f80}, // i8
-  {i32i8, NULL,   NULL,   i32i64, i32u8, i32u16, NULL,   i32i64, i32f32, i32f64, i32f80}, // i16
-  {i32i8, i32i16, NULL,   i32i64, i32u8, i32u16, NULL,   i32i64, i32f32, i32f64, i32f80}, // i32
-  {i32i8, i32i16, NULL,   NULL,   i32u8, i32u16, NULL,   NULL,   i64f32, i64f64, i64f80}, // i64
+  {NULL,  NULL,   NULL,   i32i64, i32u8, NULL, NULL,   i32i64, i32f32, i32f64, i32f80}, // i8
+  {i32i8, NULL,   NULL,   i32i64, i32u8, NULL, NULL,   i32i64, i32f32, i32f64, i32f80}, // i16
+  {i32i8, i32i16, NULL,   i32i64, i32u8, NULL, NULL,   i32i64, i32f32, i32f64, i32f80}, // i32
+  {i32i8, i32i16, NULL,   NULL,   i32u8, NULL, NULL,   NULL,   i64f32, i64f64, i64f80}, // i64
 
-  {i32i8, NULL,   NULL,   i32i64, NULL,  NULL,   NULL,   i32i64, i32f32, i32f64, i32f80}, // u8
-  {i32i8, i32i16, NULL,   i32i64, i32u8, NULL,   NULL,   i32i64, i32f32, i32f64, i32f80}, // u16
-  {i32i8, i32i16, NULL,   u32i64, i32u8, i32u16, NULL,   u32i64, u32f32, u32f64, u32f80}, // u32
-  {i32i8, i32i16, NULL,   NULL,   i32u8, i32u16, NULL,   NULL,   u64f32, u64f64, u64f80}, // u64
+  {i32i8, NULL,   NULL,   i32i64, NULL,  NULL, NULL,   i32i64, i32f32, i32f64, i32f80}, // u8
+  {i32i8, i32i16, NULL,   i32i64, i32u8, NULL, NULL,   i32i64, i32f32, i32f64, i32f80}, // u16
+  {i32i8, i32i16, NULL,   u32i64, i32u8, NULL, NULL,   u32i64, u32f32, u32f64, u32f80}, // u32
+  {i32i8, i32i16, NULL,   NULL,   i32u8, NULL, NULL,   NULL,   u64f32, u64f64, u64f80}, // u64
 
   {f32i8, f32i16, f32i32, f32i64, f32u8, f32u16, f32u32, f32u64, NULL,   f32f64, f32f80}, // f32
   {f64i8, f64i16, f64i32, f64i64, f64u8, f64u16, f64u32, f64u64, f64f32, NULL,   f64f80}, // f64
@@ -827,11 +827,7 @@ static void gen_expr(Node *node) {
 	cast(node->lhs->ty, node->ty);
 	return;
   case ND_MEMZERO:
-	// `rep stosb` is equivalent to `memset(%si, %al, %rcx)`.
-	println("\tmov $%d, %%rcx", node->var->ty->size);
-	println("\tlea %d(%%rbp), %%si", node->var->offset);
-	println("\tmov %%al 0h");
-	println("\trep stosb");
+	  println("\tmemset [%%bp + %04Xh] %04Xh 0h", (unsigned short)node->var->offset, (unsigned short)node->var->ty->size);
 	return;
   case ND_COND: {
 	int c = count();
@@ -851,6 +847,18 @@ static void gen_expr(Node *node) {
 	println("\tsete %%al");
 	println("\tmovzx %%al, %%rax");
 	return;
+  case ND_INC:
+	  gen_addr(node->lhs);
+	  push();
+	  println("\tinc %%a");
+	  store(node->lhs->ty);
+	  return;
+  case ND_DEC:
+	  gen_addr(node->lhs);
+	  push();
+	  println("\tdec %%a");
+	  store(node->lhs->ty);
+	  return;
   case ND_BITNOT:
 	gen_expr(node->lhs);
 	println("\tnot %%rax");
@@ -864,7 +872,7 @@ static void gen_expr(Node *node) {
 	cmp_zero(node->rhs->ty);
 	println("\tjz @.L.false.%d", c);
 	println("\tmov $1, %%rax");
-	println("\tjmp .L.end.%d", c);
+	println("\tjmp @.L.end.%d", c);
 	println(".L.false.%d:", c);
 	println("\tmov %%a 0h");
 	println(".L.end.%d:", c);
@@ -874,12 +882,12 @@ static void gen_expr(Node *node) {
 	int c = count();
 	gen_expr(node->lhs);
 	cmp_zero(node->lhs->ty);
-	println("\tjne .L.true.%d", c);
+	println("\tjne @.L.true.%d", c);
 	gen_expr(node->rhs);
 	cmp_zero(node->rhs->ty);
-	println("\tjne .L.true.%d", c);
+	println("\tjne @.L.true.%d", c);
 	println("\tmov %%a 0h");
-	println("\tjmp .L.end.%d", c);
+	println("\tjmp @.L.end.%d", c);
 	println(".L.true.%d:", c);
 	println("\tmov $1, %%rax");
 	println(".L.end.%d:", c);
@@ -1156,26 +1164,36 @@ static void gen_expr(Node *node) {
   case ND_NE:
   case ND_LT:
   case ND_LE:
-	println("\tcmp %s, %s", di, ax);
+  {
+	  println("\tcmp %s %s", di, ax);
+	  int c = count();
 
-	if (node->kind == ND_EQ) {
-	  println("\tsete %%al");
-	} else if (node->kind == ND_NE) {
-	  println("\tsetne %%al");
-	} else if (node->kind == ND_LT) {
-	  if (node->lhs->ty->is_unsigned)
-		println("\tsetb %%al");
-	  else
-		println("\tsetl %%al");
-	} else if (node->kind == ND_LE) {
-	  if (node->lhs->ty->is_unsigned)
-		println("\tsetbe %%al");
-	  else
-		println("\tsetle %%al");
-	}
+	  if (node->kind == ND_EQ) 
+	  {
+		  println("jne @.compare%d", c);
+	  }
+	  else if (node->kind == ND_NE) {
+		  println("je @.compare%d", c);
+	  }
+	  else if (node->kind == ND_LT) {
+		  if (node->lhs->ty->is_unsigned)
+			  println("; fixme ;");
+		  else
+			  println("\tjgz @.compare%d", c);
+	  }
+	  else if (node->kind == ND_LE) {
+		  if (node->lhs->ty->is_unsigned)
+			  println("; fixme ;");
+		  else
+			  println("\tjg @.compare%d", c);
+	  }
 
-	println("\tmovzb %%al, %%rax");
-	return;
+	  println("\tmov %%al 1h");
+	  println("\t.compare%d:", c);
+
+	  println("\tmov %%ah 0h");
+	  return;
+  }
   case ND_SHL:
 	println("\tmov %%si, %%rcx");
 	println("\tshl %%cl, %s", ax);
@@ -1198,13 +1216,13 @@ static void gen_stmt(Node *node) {
 	int c = count();
 	gen_expr(node->cond);
 	cmp_zero(node->cond->ty);
-	println("\tjz  @.L.else.%d", c);
+	println("\tjz  @.else.%d", c);
 	gen_stmt(node->then);
-	println("\tjmp @.L.end.%d", c);
-	println(".L.else.%d:", c);
+	println("\tjmp @.end.%d", c);
+	println(".else.%d:", c);
 	if (node->els)
 	  gen_stmt(node->els);
-	println(".L.end.%d:", c);
+	println(".end.%d:", c);
 	return;
   }
   case ND_FOR: {
@@ -1257,9 +1275,9 @@ static void gen_stmt(Node *node) {
 	}
 
 	if (node->default_case)
-	  println("\tjmp %s", node->default_case->label);
+	  println("\tjmp @%s", node->default_case->label);
 
-	println("\tjmp %s", node->brk_label);
+	println("\tjmp @%s", node->brk_label);
 	gen_stmt(node->then);
 	println("%s:", node->brk_label);
 	return;
@@ -1272,7 +1290,7 @@ static void gen_stmt(Node *node) {
 	  gen_stmt(n);
 	return;
   case ND_GOTO:
-	println("\tjmp %s", node->unique_label);
+	println("\tjmp @%s", node->unique_label);
 	return;
   case ND_GOTO_EXPR:
 	gen_expr(node->lhs);
@@ -1384,11 +1402,6 @@ static void emit_data(Obj *prog) {
   for (Obj *var = prog; var; var = var->next) {
 	if (var->is_function || var->asm || !var->is_definition)
 	  continue;
-
-	if (var->is_static)
-	  println("\t.local %s", var->name);
-	else
-	  println("\t.globl %s", var->name);
 
 	int align = (var->ty->kind == TY_ARRAY && var->ty->size >= 16)
 	  ? MAX(16, var->align) : var->align;

@@ -220,6 +220,8 @@ void add_type(Node *node) {
       error_tok(node->lhs->tok, "not an lvalue");
     if (node->lhs->ty->kind != TY_STRUCT)
       node->rhs = new_cast(node->rhs, node->lhs->ty);
+  case ND_INC:
+  case ND_DEC:
     node->ty = node->lhs->ty;
     return;
   case ND_EQ:
